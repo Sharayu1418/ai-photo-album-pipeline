@@ -1,0 +1,35 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+
+  build:
+    commands:
+      - echo "Building Lambda functions..."
+      - echo "Packaging index-photos Lambda..."
+      - cd lambda/index-photos
+      - zip -r ../../index-photos.zip lambda_function.py
+      - cd ../..
+      - echo "Packaging search-photos Lambda..."
+      - cd lambda/search-photos
+      - zip -r ../../search-photos.zip lambda_function.py
+      - cd ../..
+
+  post_build:
+    commands:
+      - echo "Updating Lambda functions..."
+      - aws lambda update-function-code --function-name album-index-photos --zip-file fileb://index-photos.zip --region us-east-1
+      - aws lambda update-function-code --function-name album-search-photos --zip-file fileb://search-photos.zip --region us-east-1
+      - echo "Lambda functions updated successfully!"
+
+artifacts:
+  files:
+    - index-photos.zip
+    - search-photos.zip
+  discard-paths: yes
+

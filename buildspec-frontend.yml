@@ -1,0 +1,23 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "Setting up frontend deployment..."
+
+  build:
+    commands:
+      - echo "Preparing frontend files..."
+      - ls -la frontend/
+
+  post_build:
+    commands:
+      - echo "Deploying frontend to S3..."
+      - aws s3 sync frontend/ s3://album-frontend-bucket-${AWS_ACCOUNT_ID}/ --delete
+      - echo "Frontend deployed successfully!"
+
+artifacts:
+  files:
+    - frontend/**/*
+  base-directory: '.'
+

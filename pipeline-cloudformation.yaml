@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CodePipeline for Photo Album Application'
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: 'Sharayu1418'
+    Description: GitHub repository owner
+  
+  GitHubRepo:
+    Type: String
+    Default: 'ai-photo-album-pipeline'
+    Description: GitHub repository name
+  
+  GitHubBranch:
+    Type: String
+    Default: 'main'
+    Description: GitHub branch name
+
+  GitHubConnectionArn:
+    Type: String
+    Description: ARN of the CodeStar Connection to GitHub
+
+Resources:
+  # ==================== S3 Artifact Bucket ====================
+  AlbumPipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'album-pipeline-artifacts-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+
+  # ==================== CodeBuild Role ====================
+  AlbumCodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: album-codebuild-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AlbumCodeBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub '${AlbumPipelineArtifactBucket.Arn}'
+                  - !Sub '${AlbumPipelineArtifactBucket.Arn}/*'
+                  - !Sub 'arn:aws:s3:::album-frontend-bucket-${AWS::AccountId}'
+                  - !Sub 'arn:aws:s3:::album-frontend-bucket-${AWS::AccountId}/*'
+              - Effect: Allow
+                Action:
+                  - lambda:UpdateFunctionCode
+                  - lambda:GetFunction
+                Resource:
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:album-index-photos'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:album-search-photos'
+
+  # ==================== CodePipeline Role ====================
+  AlbumCodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: album-codepipeline-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AlbumCodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub '${AlbumPipelineArtifactBucket.Arn}'
+                  - !Sub '${AlbumPipelineArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref GitHubConnectionArn
+
+  # ==================== CodeBuild Projects ====================
+  AlbumLambdaBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: album-lambda-build
+      Description: Build project for Lambda functions
+      ServiceRole: !GetAtt AlbumCodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-lambda.yml
+
+  AlbumFrontendBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: album-frontend-build
+      Description: Build project for frontend deployment
+      ServiceRole: !GetAtt AlbumCodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-frontend.yml
+
+  # ==================== Backend Pipeline ====================
+  AlbumBackendPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: album-backend-pipeline
+      RoleArn: !GetAtt AlbumCodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref AlbumPipelineArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Sub '${GitHubOwner}/${GitHubRepo}'
+                BranchName: !Ref GitHubBranch
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceOutput
+        - Name: Build
+          Actions:
+            - Name: BuildLambda
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref AlbumLambdaBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+
+  # ==================== Frontend Pipeline ====================
+  AlbumFrontendPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: album-frontend-pipeline
+      RoleArn: !GetAtt AlbumCodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref AlbumPipelineArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Sub '${GitHubOwner}/${GitHubRepo}'
+                BranchName: !Ref GitHubBranch
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceOutput
+        - Name: Deploy
+          Actions:
+            - Name: DeployFrontend
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref AlbumFrontendBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+
+Outputs:
+  BackendPipelineUrl:
+    Description: URL of the backend pipeline
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${AlbumBackendPipeline}/view'
+
+  FrontendPipelineUrl:
+    Description: URL of the frontend pipeline
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${AlbumFrontendPipeline}/view'
+

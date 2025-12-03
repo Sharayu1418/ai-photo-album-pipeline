@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Album - AI Photo Search</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Animated Background -->
+        <div class="bg-gradient"></div>
+        <div class="bg-pattern"></div>
+        
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">◈</span>
+                <h1>Album</h1>
+            </div>
+            <p class="tagline">AI-Powered Photo Search</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Search Section -->
+            <section class="search-section">
+                <div class="search-container">
+                    <div class="search-box">
+                        <span class="search-icon">⌕</span>
+                        <input 
+                            type="text" 
+                            id="searchInput" 
+                            placeholder="Search for photos... (e.g., 'show me dogs' or 'trees and flowers')"
+                            autocomplete="off"
+                        >
+                        <button id="searchBtn" class="search-btn">
+                            <span>Search</span>
+                            <span class="btn-shine"></span>
+                        </button>
+                    </div>
+                    <div class="search-hints">
+                        <span class="hint-label">Try:</span>
+                        <button class="hint-chip" onclick="searchFor('cats')">cats</button>
+                        <button class="hint-chip" onclick="searchFor('nature')">nature</button>
+                        <button class="hint-chip" onclick="searchFor('people')">people</button>
+                        <button class="hint-chip" onclick="searchFor('cars')">cars</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection">
+                <div class="results-header">
+                    <h2 id="resultsTitle">Your Photos</h2>
+                    <span id="resultsCount" class="results-count"></span>
+                </div>
+                <div class="results-grid" id="resultsGrid">
+                    <!-- Results will be populated here -->
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-icon">📷</div>
+                        <h3>Search for photos</h3>
+                        <p>Enter a search query to find photos by their content</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="upload-container">
+                    <h2>Upload New Photo</h2>
+                    <div class="upload-box" id="uploadBox">
+                        <input type="file" id="fileInput" accept="image/*" hidden>
+                        <div class="upload-content" id="uploadContent">
+                            <div class="upload-icon">↑</div>
+                            <p class="upload-text">Drop image here or <span class="browse-link">browse</span></p>
+                            <p class="upload-hint">Supports: JPG, PNG, GIF</p>
+                        </div>
+                        <div class="upload-preview" id="uploadPreview" style="display: none;">
+                            <img id="previewImage" src="" alt="Preview">
+                            <button class="remove-preview" onclick="clearPreview()">×</button>
+                        </div>
+                    </div>
+                    <div class="custom-labels">
+                        <label for="customLabels">Custom Labels (optional)</label>
+                        <input 
+                            type="text" 
+                            id="customLabels" 
+                            placeholder="e.g., vacation, family, birthday (comma-separated)"
+                        >
+                    </div>
+                    <button id="uploadBtn" class="upload-btn" disabled>
+                        <span class="upload-btn-text">Upload Photo</span>
+                        <span class="upload-btn-loading" style="display: none;">Uploading...</span>
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Built with AWS Rekognition, Lex, and OpenSearch</p>
+        </footer>
+
+        <!-- Toast Notification -->
+        <div class="toast" id="toast">
+            <span class="toast-icon">✓</span>
+            <span class="toast-message" id="toastMessage"></span>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loader">
+            <div class="loader-ring"></div>
+            <span>Searching...</span>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
