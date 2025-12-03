@@ -1,7 +1,45 @@
 import json
 import boto3
-import urllib.request
 import os
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+import urllib.request
+
+def get_aws_auth():
+    """Get AWS credentials for signing requests."""
+    session = boto3.Session()
+    credentials = session.get_credentials()
+    return credentials
+
+def signed_request(method, url, data=None, headers=None, service='es', region='us-east-1'):
+    """Make a signed request to AWS services."""
+    if headers is None:
+        headers = {}
+    
+    credentials = get_aws_auth()
+    
+    if data:
+        data_bytes = data.encode('utf-8') if isinstance(data, str) else data
+    else:
+        data_bytes = None
+    
+    request = AWSRequest(method=method, url=url, data=data_bytes, headers=headers)
+    SigV4Auth(credentials, service, region).add_auth(request)
+    
+    req = urllib.request.Request(
+        url,
+        data=data_bytes,
+        method=method,
+        headers=dict(request.headers)
+    )
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            return response.read().decode('utf-8')
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        print(f"HTTP Error {e.code}: {error_body}")
+        raise
 
 def lambda_handler(event, context):
     """
@@ -45,12 +83,10 @@ def lambda_handler(event, context):
             if slots:
                 for slot_name, slot_value in slots.items():
                     if slot_value:
-                        # Handle Lex V2 slot structure
                         if 'value' in slot_value:
                             interpreted = slot_value['value'].get('interpretedValue', '')
                             if interpreted:
                                 keywords.append(interpreted.lower())
-                        # Handle list of values
                         elif 'values' in slot_value:
                             for val in slot_value['values']:
                                 if 'value' in val:
@@ -62,9 +98,8 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Lex error: {e}")
     
-    # Fallback: if no keywords from Lex, parse query manually
+    # Fallback: parse query manually
     if not keywords:
-        # Remove common words and extract meaningful keywords
         stop_words = {'show', 'me', 'find', 'search', 'for', 'photos', 'pictures', 'images', 
                       'with', 'of', 'the', 'a', 'an', 'and', 'or', 'in', 'them', 'please'}
         words = query.lower().split()
@@ -75,9 +110,9 @@ def lambda_handler(event, context):
     if not keywords:
         return build_response({'results': []})
     
-    # Search OpenSearch
+    # Search OpenSearch with signed request
     opensearch_endpoint = os.environ.get('OPENSEARCH_ENDPOINT', 'https://search-photos-5q7clr3fduwyh4smyqpjz3xrcm.us-east-1.es.amazonaws.com')
-    photos_bucket = os.environ.get('PHOTOS_BUCKET', 'album-photos-bucket')
+    photos_bucket = os.environ.get('PHOTOS_BUCKET', 'album-photos-bucket-195443952067')
     
     results = search_opensearch(opensearch_endpoint, keywords, photos_bucket)
     
@@ -92,7 +127,6 @@ def search_opensearch(endpoint, keywords, default_bucket):
         return results
     
     try:
-        # Build search query - match any of the keywords in labels
         should_clauses = [{"match": {"labels": keyword}} for keyword in keywords]
         search_query = {
             "query": {
@@ -105,33 +139,32 @@ def search_opensearch(endpoint, keywords, default_bucket):
         }
         
         url = f"{endpoint}/photos/_search"
-        data = json.dumps(search_query).encode('utf-8')
-        req = urllib.request.Request(url, data=data, method='POST')
-        req.add_header('Content-Type', 'application/json')
         
-        with urllib.request.urlopen(req) as response:
-            search_results = json.loads(response.read().decode('utf-8'))
-            print(f"OpenSearch results: {json.dumps(search_results)}")
+        response_text = signed_request(
+            method='POST',
+            url=url,
+            data=json.dumps(search_query),
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        search_results = json.loads(response_text)
+        print(f"OpenSearch results: {json.dumps(search_results)}")
+        
+        hits = search_results.get('hits', {}).get('hits', [])
+        
+        for hit in hits:
+            source = hit.get('_source', {})
+            bucket = source.get('bucket', default_bucket)
+            key = source.get('objectKey', '')
             
-            hits = search_results.get('hits', {}).get('hits', [])
-            
-            for hit in hits:
-                source = hit.get('_source', {})
-                bucket = source.get('bucket', default_bucket)
-                key = source.get('objectKey', '')
-                
-                if key:
-                    photo_url = f"https://{bucket}.s3.amazonaws.com/{key}"
-                    results.append({
-                        'url': photo_url,
-                        'labels': source.get('labels', []),
-                        'objectKey': key,
-                        'bucket': bucket
-                    })
-    except urllib.error.HTTPError as e:
-        print(f"OpenSearch HTTP error: {e.code} - {e.reason}")
-        error_body = e.read().decode('utf-8')
-        print(f"Error body: {error_body}")
+            if key:
+                photo_url = f"https://{bucket}.s3.amazonaws.com/{key}"
+                results.append({
+                    'url': photo_url,
+                    'labels': source.get('labels', []),
+                    'objectKey': key,
+                    'bucket': bucket
+                })
     except Exception as e:
         print(f"OpenSearch search error: {e}")
     
@@ -149,4 +182,3 @@ def build_response(body):
         },
         'body': json.dumps(body)
     }
-

@@ -1,0 +1,9 @@
+*.zip
+response*.json
+result*.json
+test-event*.json
+opensearch-policy.json
+*.pyc
+__pycache__/
+.DS_Store
+

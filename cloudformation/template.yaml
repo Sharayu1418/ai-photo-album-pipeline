@@ -78,7 +78,7 @@ Resources:
               - HEAD
             AllowedOrigins:
               - '*'
-            ExposeHeaders:
+            ExposedHeaders:
               - ETag
               - x-amz-meta-customlabels
 

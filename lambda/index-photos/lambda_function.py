@@ -1,9 +1,52 @@
 import json
 import boto3
-import urllib.request
 import urllib.parse
 from datetime import datetime
 import os
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from botocore.credentials import Credentials
+import urllib.request
+
+def get_aws_auth():
+    """Get AWS credentials for signing requests."""
+    session = boto3.Session()
+    credentials = session.get_credentials()
+    return credentials
+
+def signed_request(method, url, data=None, headers=None, service='es', region='us-east-1'):
+    """Make a signed request to AWS services."""
+    if headers is None:
+        headers = {}
+    
+    credentials = get_aws_auth()
+    
+    # Create the request
+    if data:
+        data_bytes = data.encode('utf-8') if isinstance(data, str) else data
+    else:
+        data_bytes = None
+    
+    request = AWSRequest(method=method, url=url, data=data_bytes, headers=headers)
+    
+    # Sign the request
+    SigV4Auth(credentials, service, region).add_auth(request)
+    
+    # Make the actual request
+    req = urllib.request.Request(
+        url,
+        data=data_bytes,
+        method=method,
+        headers=dict(request.headers)
+    )
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            return response.read().decode('utf-8')
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        print(f"HTTP Error {e.code}: {error_body}")
+        raise
 
 def lambda_handler(event, context):
     """
@@ -42,8 +85,7 @@ def lambda_handler(event, context):
         metadata = head_response.get('Metadata', {})
         print(f"S3 Metadata: {metadata}")
         
-        # Try different variations of the custom labels header
-        custom_labels_str = metadata.get('customlabels', '') or metadata.get('customLabels', '') or metadata.get('x-amz-meta-customlabels', '')
+        custom_labels_str = metadata.get('customlabels', '') or metadata.get('customLabels', '')
         
         if custom_labels_str:
             custom_labels = [l.strip().lower() for l in custom_labels_str.split(',') if l.strip()]
@@ -52,14 +94,8 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error getting metadata: {e}")
     
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_labels = []
-    for label in labels:
-        if label not in seen:
-            seen.add(label)
-            unique_labels.append(label)
-    labels = unique_labels
+    # Remove duplicates
+    labels = list(set(labels))
     
     # Create document for OpenSearch
     document = {
@@ -71,22 +107,21 @@ def lambda_handler(event, context):
     
     print(f"Document to index: {json.dumps(document)}")
     
-    # Index to OpenSearch
+    # Index to OpenSearch with signed request
     opensearch_endpoint = os.environ.get('OPENSEARCH_ENDPOINT', 'https://search-photos-5q7clr3fduwyh4smyqpjz3xrcm.us-east-1.es.amazonaws.com')
     
     if opensearch_endpoint:
         try:
-            # Create a unique document ID from the key
             doc_id = key.replace('/', '_').replace(' ', '_')
             url = f"{opensearch_endpoint}/photos/_doc/{doc_id}"
             
-            data = json.dumps(document).encode('utf-8')
-            req = urllib.request.Request(url, data=data, method='PUT')
-            req.add_header('Content-Type', 'application/json')
-            
-            with urllib.request.urlopen(req) as response:
-                result = response.read().decode('utf-8')
-                print(f"OpenSearch response: {result}")
+            result = signed_request(
+                method='PUT',
+                url=url,
+                data=json.dumps(document),
+                headers={'Content-Type': 'application/json'}
+            )
+            print(f"OpenSearch response: {result}")
         except Exception as e:
             print(f"OpenSearch indexing error: {e}")
             raise e
@@ -100,4 +135,3 @@ def lambda_handler(event, context):
             'labels': labels
         })
     }
-

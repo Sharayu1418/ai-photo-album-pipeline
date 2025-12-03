@@ -1,6 +1,6 @@
 // ==================== Configuration ====================
 // UPDATE THIS URL after deploying CloudFormation!
-const API_BASE_URL = 'YOUR_API_GATEWAY_URL'; // e.g., 'https://xxxxxxxx.execute-api.us-east-1.amazonaws.com/prod'
+const API_BASE_URL = 'https://mt5lr2bkp6.execute-api.us-east-1.amazonaws.com/prod';
 
 // ==================== DOM Elements ====================
 const searchInput = document.getElementById('searchInput');
