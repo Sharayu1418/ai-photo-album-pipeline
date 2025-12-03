@@ -13,7 +13,7 @@ phases:
   post_build:
     commands:
       - echo "Deploying frontend to S3..."
-      - aws s3 sync frontend/ s3://album-frontend-bucket-${AWS_ACCOUNT_ID}/ --delete
+      - aws s3 sync frontend/ s3://album-frontend-bucket-195443952067/ --delete
       - echo "Frontend deployed successfully!"
 
 artifacts:
