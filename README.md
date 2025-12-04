@@ -14,8 +14,6 @@ An intelligent photo album web application that leverages AWS services to enable
 - [API Reference](#api-reference)
 - [AWS Resource Naming](#aws-resource-naming)
 - [CI/CD Pipeline](#cicd-pipeline)
-- [Contributing](#contributing)
-- [License](#license)
 
 ## Features
 
